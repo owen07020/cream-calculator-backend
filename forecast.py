@@ -3,7 +3,7 @@ from flask_cors import CORS
 import os
 
 app = Flask(__name__)
-CORS(app, origins=["https://cream-calculator-frontend.vercel.app"])
+CORS(app)  # Allow all origins for development
 
 @app.route('/api/forecast', methods=['POST'])
 def forecast():
