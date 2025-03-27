@@ -77,7 +77,7 @@ def forecast():
             # Grow for next month
             monthly_sales = int(monthly_sales * (1 + growth_rate))
 
-        return jsonify(results)
+        return jsonify({"forecast": results})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -85,6 +85,7 @@ def forecast():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
+
 
 
 
