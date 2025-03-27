@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-
+import os
 
 app = Flask(__name__)
 CORS(app, origins=["https://cream-calculator-frontend.vercel.app"])
@@ -9,75 +9,72 @@ CORS(app, origins=["https://cream-calculator-frontend.vercel.app"])
 def forecast():
     data = request.get_json()
 
-    # Extract inputs
+    # Extract key inputs
     selling_price = float(data['sellingPrice'])
-    manufacturing_cost = float(data['manufacturingCost'])
-    amazon_fee = float(data['amazonFee'])
-    fulfilment_fee = float(data['fulfilmentFee'])
     ppc_per_unit = float(data['ppcPerUnit'])
     monthly_sales = int(data['monthlySales'])
-    bank_balance = float(data['bankBalance'])
     growth_rate = float(data['growthRate']) / 100
-    forecast_months = int(data['forecastMonths'])
+    months = int(data['forecastMonths'])
+    bank_balance = float(data['bankBalance'])
 
-    oil_cost = float(data['oilCost'])
-    alcohol_cost = float(data['alcoholCost'])
-    component_cost = float(data['componentCost'])
-    reorder_threshold = int(data['reorderThreshold'])
+    # Extract dynamic components list
+    components = data.get('components', [])
 
-    oil_pack_units = 155
-    alcohol_pack_units = 300
-    component_pack_units = 1000
+    # Track inventory and output
+    inventory = {}
+    forecast_rows = []
 
-    oil_stock = oil_pack_units
-    alcohol_stock = alcohol_pack_units
-    component_stock = component_pack_units
+    # Initialize inventory levels
+    for comp in components:
+        name = comp['name']
+        inventory[name] = comp['initialStock']
 
-    results = []
+    for month in range(1, months + 1):
+        units_sold = int(monthly_sales * ((1 + growth_rate) ** (month - 1)))
+        revenue = units_sold * selling_price
 
-    for month in range(1, forecast_months + 1):
-        revenue = selling_price * monthly_sales
-        cogs = (manufacturing_cost + amazon_fee + fulfilment_fee + ppc_per_unit) * monthly_sales
-        profit = revenue - cogs
+        # Track costs and reorders
+        component_reorders = []
+        total_reorder_cost = 0
 
-        reorder_cost = 0
-        oil_stock -= monthly_sales
-        alcohol_stock -= monthly_sales
-        component_stock -= monthly_sales
+        for comp in components:
+            name = comp['name']
+            reorder_threshold = int(comp['reorderThreshold'])
+            reorder_quantity = int(comp['reorderQuantity'])
+            reorder_cost = float(comp['reorderCost'])
 
-        if oil_stock < reorder_threshold:
-            oil_stock += oil_pack_units
-            reorder_cost += oil_cost
-        if alcohol_stock < reorder_threshold:
-            alcohol_stock += alcohol_pack_units
-            reorder_cost += alcohol_cost
-        if component_stock < reorder_threshold:
-            component_stock += component_pack_units
-            reorder_cost += component_cost
+            inventory[name] -= units_sold
 
-        bank_balance += profit - reorder_cost
-        cream = max(0, profit - reorder_cost)
+            if inventory[name] <= reorder_threshold:
+                inventory[name] += reorder_quantity
+                total_reorder_cost += reorder_cost
+                component_reorders.append(f"{name}: {reorder_quantity}")
+            else:
+                component_reorders.append("")
 
-        results.append({
-            'Month': month,
-            'Units Sold': monthly_sales,
-            'Revenue': f"£{int(revenue)}",
-            'Profit': f"£{int(profit)}",
-            'Cash Needed for Stock': f"£{int(reorder_cost)}",
-            'Cream': f"£{int(cream)}",
-            'Bank Balance': f"£{int(bank_balance)}",
-            'Oil Stock': oil_stock,
-            'Alcohol Stock': alcohol_stock,
-            'Component Stock': component_stock
+        ppc_cost = units_sold * ppc_per_unit
+        total_cost = total_reorder_cost + ppc_cost
+        profit = revenue - total_cost
+        bank_balance += profit - total_reorder_cost
+        cream = profit - total_reorder_cost
+
+        forecast_rows.append({
+            "Month": month,
+            "Units Sold": units_sold,
+            "Revenue": int(revenue),
+            "Profit": int(profit),
+            "PPC Cost": int(ppc_cost),
+            "Cash Needed": int(total_reorder_cost),
+            "Cream": int(cream),
+            "Bank Balance": int(bank_balance),
+            "Reorders": component_reorders,
+            "Inventory Levels": {k: int(v) for k, v in inventory.items()}
         })
 
-        monthly_sales = int(monthly_sales * (1 + growth_rate))
-
-    return jsonify(results)
-
-import os
+    return jsonify(forecast_rows)
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
+
 
